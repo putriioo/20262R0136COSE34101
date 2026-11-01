@@ -12,6 +12,11 @@ struct {
   struct proc proc[NPROC];
 } ptable;
 
+// Priority based ready queue
+struct{
+  struct proc *head;
+} ready_queue;
+
 static struct proc *initproc;
 
 int nextpid = 1;
@@ -20,10 +25,61 @@ extern void trapret(void);
 
 static void wakeup1(void *chan);
 
+// Insert a process into the ready queue
+// Must be called while holding ptable lock
+static void
+enqueue(struct proc *p)
+{
+  struct proc *current;
+
+  p->next = 0;
+
+  if(ready_queue.head == 0 ||
+     p->priority < ready_queue.head->priority ||
+     (p->priority == ready_queue.head->priority &&
+      p->pid > ready_queue.head->pid)){
+
+    p->next = ready_queue.head;
+    ready_queue.head = p;
+    return;
+  }
+
+  current = ready_queue.head;
+
+  while(current->next != 0 &&
+        (current->next->priority < p->priority ||
+         (current->next->priority == p->priority &&
+          current->next->pid > p->pid))){
+
+	current = current->next;
+  }
+
+  p->next = current->next;
+  current->next = p;
+}
+
+// Remove and return the first process in ready queue
+// Must be called while holding ptable lock
+static struct proc*
+dequeue(void)
+{
+  struct proc *p;
+
+  p = ready_queue.head;
+
+  if(p != 0){
+    ready_queue.head = p->next;
+    p->next = 0;
+  }
+
+  return p;
+}
+
 void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  ready_queue.head = 0;
 }
 
 // Must be called with interrupts disabled
@@ -151,6 +207,7 @@ userinit(void)
   acquire(&ptable.lock);
 
   p->state = RUNNABLE;
+  enqueue(p);
 
   release(&ptable.lock);
 }
@@ -225,6 +282,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
+  enqueue(np);
 
   release(&ptable.lock);
 
