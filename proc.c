@@ -65,7 +65,7 @@ remove_from_queue(struct proc *p)
 {
   struct proc *current;
 
-  if(read_queue.head == p){
+  if(ready_queue.head == p){
     ready_queue.head = p->next;
     p->next = 0;
     return;
@@ -637,14 +637,23 @@ procdump(void)
 int
 setnice(int pid, int nice)
 {
+  struct proc *p;
+
   if( nice < 0 || nice > 30)
     return -1;
 
-  struct proc *p;
   acquire(&ptable.lock);
+
   for( p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->pid==pid){
+    if(p->pid == pid){
+      if(p->state == RUNNABLE)
+	remove_from_queue(p);
+
       p->priority = nice;
+
+      if(p->state == RUNNABLE)
+	enqueue(p);
+
       release(&ptable.lock);
       return 0;
     }
