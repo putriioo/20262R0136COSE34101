@@ -261,7 +261,7 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid;
+  int i, pid, should_yield;
   struct proc *np;
   struct proc *curproc = myproc();
 
@@ -306,7 +306,13 @@ fork(void)
   np->state = RUNNABLE;
   enqueue(np);
 
+  should_yield = (np->priority < curproc->priority);
+
   release(&ptable.lock);
+
+  // Yield if the child has higher priority than the parent
+  if(should_yield)
+     yield();
 
   return pid;
 }
