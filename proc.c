@@ -306,7 +306,10 @@ fork(void)
   np->state = RUNNABLE;
   enqueue(np);
 
-  should_yield = (np->priority < curproc->priority);
+  should_yield = (ready_queue.head !=0 &&
+		  (ready_queue.head->priority < curproc->priority ||
+		   (ready_queue.head->priority == curproc->priority &&
+		    ready_queue.head->pid > curproc->pid)));
 
   release(&ptable.lock);
 
@@ -644,14 +647,20 @@ int
 setnice(int pid, int nice)
 {
   struct proc *p;
+  struct proc *curproc;
+  int should_yield = 0;
+
 
   if( nice < 0 || nice > 30)
     return -1;
+
+  curproc = myproc();
 
   acquire(&ptable.lock);
 
   for( p = ptable.proc; p < &ptable.proc[NPROC]; p++){
     if(p->pid == pid){
+  
       if(p->state == RUNNABLE)
 	remove_from_queue(p);
 
@@ -660,7 +669,23 @@ setnice(int pid, int nice)
       if(p->state == RUNNABLE)
 	enqueue(p);
 
+      //check whether a runnable process should run before the current process
+      if((p == curproc || p->state == RUNNABLE) &&
+	 curproc != 0 &&
+	 curproc->state == RUNNING &&
+	 ready_queue.head != 0 &&
+	 (ready_queue.head->priority < curproc->priority ||
+	  (ready_queue.head->priority == curproc->priority &&
+	   ready_queue.head->pid > curproc->pid))){
+	 
+	 should_yield = 1;
+      }
+
       release(&ptable.lock);
+      
+      if(should_yield)
+	 yield();
+
       return 0;
     }
   }
