@@ -58,6 +58,28 @@ enqueue(struct proc *p)
   current->next = p;
 }
 
+// Remove a process in the ready queue
+// Must be called while holding ptable lock
+static void
+remove_from_queue(struct proc *p)
+{
+  struct proc *current;
+
+  if(read_queue.head == p){
+    ready_queue.head = p->next;
+    p->next = 0;
+    return;
+  }
+
+  for(current = ready_queue.head; current != 0; current = current->next){
+     if(current->next == p){
+       current->next = p->next;
+       p->next = 0;
+       return;
+     }
+  }
+}
+
 // Remove and return the first process in ready queue
 // Must be called while holding ptable lock
 static struct proc*
