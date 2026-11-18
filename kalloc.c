@@ -176,5 +176,8 @@ inc_refcount(uint pa)
 void  
 dec_refcount(uint pa)
 {
-  return;
+  if(pa >= PHYSTOP || pa % PGSIZE)
+    panic("dec_refcount");
+
+  kfree((char*)P2V(pa));
 }
