@@ -68,15 +68,32 @@ void
 kfree(char *v)
 {
   struct run *r;
+  uint pa;
+  uint index;
 
   if((uint)v % PGSIZE || v < end || V2P(v) >= PHYSTOP)
     panic("kfree");
 
-  // Fill with junk to catch dangling refs.
-  memset(v, 1, PGSIZE);
+  pa = V2P(v);
+  index = pa >> PGSHIFT;
 
   if(kmem.use_lock)
     acquire(&kmem.lock);
+  
+  if(pmem.refcount[index] == 0)
+    panic("kfree: refcount already zero");
+
+  pmem.refcount[index]--;
+
+  if(pmem.refcount[index] > 0){
+    if(kmem.use_lock)
+      release(&kmem.lock);
+    return;
+  }
+
+  // Fill with junk to catch dangling refs.
+  memset(v, 1, PGSIZE);
+
   r = (struct run*)v;
   r->next = kmem.freelist;
   kmem.freelist = r;
