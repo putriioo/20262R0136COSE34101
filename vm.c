@@ -334,7 +334,7 @@ copyuvm(pde_t *pgdir, uint sz)
   
     // Convert writable pages into read-only CoW pages
     if(flags & PTE_W)
-      flags = flags( & ~PTE_W) | PTE_COW;
+      flags = (flags & ~PTE_W) | PTE_COW;
 
     // The child now shares this physical page
     inc_refcount(pa);
