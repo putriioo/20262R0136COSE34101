@@ -158,7 +158,19 @@ get_refcount(uint pa)
 void
 inc_refcount(uint pa)
 {
-  return;
+  if(pa >= PHYSTOP || pa % PGSIZE)
+    panic("inc_refcount");
+
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+
+  if(pmem.refcount[pa >> PGSHIFT] == 0)
+    panic("inc_refcount: unallocated page");
+
+  pmem.refcount[pa >> PGSHIFT]++;
+
+  if(kmem.use_lock)
+    release(&kmem.lock);
 }
 
 void  
