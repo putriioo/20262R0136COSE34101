@@ -133,7 +133,17 @@ kalloc(void)
 int
 freemem(void)
 {
-  return pmem.num_free_pages;
+  int n;
+
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+
+  n = pmem.num_free_pages;
+
+  if(kmem.use_lock)
+    release(&kmem.lock);
+
+  return n;
 }
 
 uint
