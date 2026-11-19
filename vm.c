@@ -381,19 +381,57 @@ uva2ka(pde_t *pgdir, char *uva)
 int
 copyout(pde_t *pgdir, uint va, void *p, uint len)
 {
-  char *buf, *pa0;
-  uint n, va0;
+  char *buf, *pa0, *mem;
+  pte_t *pte;
+  uint n, va0, pa, flags;
 
   buf = (char*)p;
+
   while(len > 0){
     va0 = (uint)PGROUNDDOWN(va);
-    pa0 = uva2ka(pgdir, (char*)va0);
-    if(pa0 == 0)
+  
+    pte = walkpgdir(pgdir, (void*)va0, 0);
+   
+    if(pte == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
       return -1;
+    // Resolve a CoW mapping before the kernel writes to it
+    if(*pte & PTE_COW){
+      pa = PTE_ADDR(*pte);
+      flags = PTE_FLAGS(*pte);
+
+      if(get_refcount(pa) == 1){
+	// The page is no longer shared, restore write access
+	*pte = pa | ((flags | PTE_W) & ~PTE_COW);
+      }
+      else{
+	// Create a private writable copy
+	mem = kalloc();
+	if(mem == 0)
+          return -1;
+
+	memmove(mem, (char*)P2V(pa), PGSIZE);
+	*pte = V2P(mem) | ((flags | PTE_W) & ~PTE_COW);
+	dec_refcount(pa);
+      }
+
+      // Refresh translations if this is the current address space
+      if(myproc() && myproc()->pgdir == pgdir)
+	 lcr3(V2P(pgdir));
+    }
+
+    // Do not write into an ordinary read-only page
+    if(!(*pte & PTE_W))
+      return -1;
+
+    pa0 = (char*)P2V(PTE_ADDR(*pte));
+
     n = PGSIZE - (va - va0);
+    
     if(n > len)
       n = len;
+    
     memmove(pa0 + (va - va0), buf, n);
+    
     len -= n;
     buf += n;
     va = va0 + PGSIZE;
