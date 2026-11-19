@@ -48,8 +48,18 @@ trap(struct trapframe *tf)
 
   switch(tf->trapno){
   case T_PGFLT:
-    page_fault();
+    // A kernel-mode page fault is not a user CoW fault
+    if((tf->cs & 3) == 0)
+      panic("trap: kernel page fault");
+
+    // A CoW fault must be a write to a present page
+    if((tf->err & 0x3) == 0x3)
+      page_fault();
+    else
+      myproc()->killed = 1;
+
     break;
+  
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
       acquire(&tickslock);
