@@ -404,13 +404,59 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
 void
 page_fault(void)
 {
-  uint va = rcr2();
-  if(va < 0) {
-    panic("Invalid access");
+  struct proc *p;
+  pte_t *pte;
+  uint va, pa, flags;
+  char *mem;
+
+  p =myproc();
+  va = PGROUNDDOWN(rcr2());
+
+  if(p == 0 || p->pgdir == 0)
+    panic("page_fault:no process");
+
+  // Reject addresses outside the process's user memory
+  if(va >= p->sz || va >= KERNBASE)
+    goto invalid;
+
+  pte = walkpgdir(p->pgdir, (void*)va, 0);
+
+  // Only present, user-accessible CoW pages can be repaired
+  if(pte == 0 ||
+     !(*pte & PTE_P) ||
+     !(*pte & PTE_U) ||
+     !(*pte & PTE_COW))
+     goto invalid;
+
+  pa = PTE_ADDR(*pte);
+  flags = PTE_FLAGS(*pte);
+
+  // If this is the last reference, no copying is needed
+  if(get_refcount(pa) == 1){
+    *pte = pa | ((flags | PTE_W) & ~PTE_COW);
+    lcr3(V2P(p->pgdir));
     return;
   }
-  
+
+  // Allocate a private copy for this process
+  mem = kalloc();
+  if(mem == 0)
+    goto invalid;
+
+  memmove(mem, (char*)P2V(pa), PGSIZE);
+
+  // Replace the shared mapping with the private writable page
+  *pte = V2P(mem) | ((flags | PTE_W) & ~PTE_COW);
+
+  // Release this process's reference to the old shared page
+  dec_refcount(pa);
+
+  // Flush the old translation from the TLB
+  lcr3(V2P(p->pgdir));
   return;
+
+invalid:
+  p->killed = 1;
 }
 
 //PAGEBREAK!
