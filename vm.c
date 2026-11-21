@@ -489,8 +489,21 @@ page_fault(void)
   pa = PTE_ADDR(*pte);
   flags = PTE_FLAGS(*pte);
 
-  // Allocate a private copy for this process
+  if(get_refcount(pa) == 0)
+    goto invalid;
+  
+  // This page is no longer shared
+  // Restore write permission without allocating memory
+  if(get_refcount(pa) == 1){
+    *pte = pa | ((flags | PTE_W) & ~PTE_COW);
+    lcr3(V2P(p->pgdir));
+
+    return;
+  }
+
+  // Otherwise, allocate a private copy for this process
   mem = kalloc();
+ 
   if(mem == 0)
     goto invalid;
 
@@ -502,7 +515,6 @@ page_fault(void)
   // Release this process's reference to the old shared page
   dec_refcount(pa);
 
-  // Flush the old translation from the TLB
   lcr3(V2P(p->pgdir));
   return;
 
