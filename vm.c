@@ -395,6 +395,10 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
   pte_t *pte;
   uint n, va0, pa, flags;
 
+  // Reject destinations outside user virtual memory
+  if(va >= KERNBASE || len > KERNBASE - va)
+    return -1;
+
   buf = (char*)p;
 
   while(len > 0){
