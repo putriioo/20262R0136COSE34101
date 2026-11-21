@@ -420,10 +420,20 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
       pa = PTE_ADDR(*pte);
       flags = PTE_FLAGS(*pte);
 
-      // Always allocate a private page for a CoW mapping
-      mem = kalloc();
-      if(mem == 0)
+      if(get_refcount(pa) == 0)
 	return -1;
+
+      if(get_refcount(pa) == 1){
+	// This process is the only remaining owner
+	// Restore write permission without copying
+	*pte = pa | ((flags | PTE_W) & ~PTE_COW);
+      }
+
+      else{
+       // The page is still shared, so create a private copy
+       mem = kalloc();
+       if(mem == 0)
+       	 return -1;
 
       // Preserve the contents of the original page
       memmove(mem, (char*)P2V(pa), PGSIZE);
@@ -431,8 +441,9 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
       //Replace the mapping with a private writable page
       *pte = V2P(mem) | ((flags | PTE_W) & ~PTE_COW);
   
-      // Release our reference to the original page
+      // Release this mapping's reference to the original page
       dec_refcount(pa);
+      }
 
       // Refresh translations if this is the current address space
       if(myproc() && myproc()->pgdir == pgdir)
