@@ -489,13 +489,6 @@ page_fault(void)
   pa = PTE_ADDR(*pte);
   flags = PTE_FLAGS(*pte);
 
-  // If this is the last reference, no copying is needed
-  if(get_refcount(pa) == 1){
-    *pte = pa | ((flags | PTE_W) & ~PTE_COW);
-    lcr3(V2P(p->pgdir));
-    return;
-  }
-
   // Allocate a private copy for this process
   mem = kalloc();
   if(mem == 0)
