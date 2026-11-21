@@ -414,25 +414,25 @@ copyout(pde_t *pgdir, uint va, void *p, uint len)
    
     if(pte == 0 || !(*pte & PTE_P) || !(*pte & PTE_U))
       return -1;
+
     // Resolve a CoW mapping before the kernel writes to it
     if(*pte & PTE_COW){
       pa = PTE_ADDR(*pte);
       flags = PTE_FLAGS(*pte);
 
-      if(get_refcount(pa) == 1){
-	// The page is no longer shared, restore write access
-	*pte = pa | ((flags | PTE_W) & ~PTE_COW);
-      }
-      else{
-	// Create a private writable copy
-	mem = kalloc();
-	if(mem == 0)
-          return -1;
+      // Always allocate a private page for a CoW mapping
+      mem = kalloc();
+      if(mem == 0)
+	return -1;
 
-	memmove(mem, (char*)P2V(pa), PGSIZE);
-	*pte = V2P(mem) | ((flags | PTE_W) & ~PTE_COW);
-	dec_refcount(pa);
-      }
+      // Preserve the contents of the original page
+      memmove(mem, (char*)P2V(pa), PGSIZE);
+
+      //Replace the mapping with a private writable page
+      *pte = V2P(mem) | ((flags | PTE_W) & ~PTE_COW);
+  
+      // Release our reference to the original page
+      dec_refcount(pa);
 
       // Refresh translations if this is the current address space
       if(myproc() && myproc()->pgdir == pgdir)
