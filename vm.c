@@ -317,7 +317,7 @@ copyuvm(pde_t *pgdir, uint sz)
 {
   pde_t *d;
   pte_t *pte;
-  uint pa, i, j, flags;
+  uint pa, i, flags;
 
   if((d = setupkvm()) == 0)
     return 0;
@@ -357,25 +357,9 @@ copyuvm(pde_t *pgdir, uint sz)
 bad:
   // Release the child's successfully mapped pages
   freevm(d);
-  
-  // Restore writable mappings that are no longer shared
-  for(j = 0; j < i; j += PGSIZE){
-     pte = walkpgdir(pgdir, (void*)j, 0);
 
-     if(pte ==0 || !(*pte & PTE_P))
-       continue;
-
-     if(!(*pte & PTE_COW))
-       continue;
-
-     pa = PTE_ADDR(*pte);
-
-     if(get_refcount(pa) == 1){
-       *pte = pa | ((PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW);
-     }
-  }
-
-  // Refresh the parent's page table translations
+  // Some parent pages may remain read-only CoW pages
+  // Their next write will be handled by page_fault()
   lcr3(V2P(pgdir));
   return 0;
 }
